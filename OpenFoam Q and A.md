@@ -313,3 +313,25 @@ From testing and investigation, inside the `main()` the non-trivial user-defined
 
 * when defining a new field in a `.C` file, e.g. `volScalarField CDkOmega(.....);` the memory of this variable will be freed up when reaching `}`. Therefore, declare this field variable in `.H` file, and output this field via `IOobject` if longer life time is required. In short, for a variable having the life time cross the whole compilation, declare it in `.H` file and output this geometric field vis `IOobject`.  Then you can manipulate this variable by `turbulence->f()` in the `main()` in the upper hierarchy, note `f()` is already defined function by OpenFoam (not user defined). 
 
+##### Jan 12th 2021 - Struggling and findings
+
++ there exists differences between variables defined with **constructor in OpenFoam** and the ones defined as **member functions** marked as "`new`" in OpenFoam. The fact is newly created constructor variables are no longer used for being manipulated via `fvc::div()`, but `new` variables under created member functions can. Not actually know why and have to study more later.
+
+##### Jan 13th 2021 - How to access created functions in `UQkOmegaSST` from `main()` (Summary after talking to Weicheng)
+
++ You must put the member function you want to access under `public`
++ Go to `UEqun.H` and add `#include "UQkOmegaSST.H"`
+
++ Add **relative path name** of the `Include` directory, where you made your changes, e.g. UQsimpleFoam, to `/root/OpenFOAM/-v1812/applications/solvers/incompressible/UQsimpleFoam/Make/options`
+
+  (Note I kept the old ones, i.e. prefixed with (LIB_SRC) which points to the original source files under `src` folder)
+
+  **Why is `main()` not seeing members in `UQsimpleFoam`, although the turbulence model written in `UQsimpleFoam` has been successfully compiled? **
+
+  
+
+  Ans: It should notice that compilation for **solvers**, i.e. `UQsimpleFoam` using `wmake` is distinct from the compilation for **turbulence models**, i.e. `UQsimpleFoam` using `./Allwmake`. My understanding: as the executable file of `UQsimpleFoam` , i.e. `EXE = $(FOAM_USER_APPBIN)/UQsimpleFoam` is also stored under `EXE = $(FOAM_USER_APPBIN` directory in which the executable files relating to my **UQ turbulence model** is also stored. From the **UQ turbulence model** perspective, it can see **UQsimpleFoam** solver as this is specified in `turbulenceProperties` . However from **UQsimpleFoam** perspective, it cannot see the **UQkOmegaSST** model, unless we **add the relative path name of the `Include`** directory to `/root/OpenFOAM/-v1812/applications/solvers/incompressible/UQsimpleFoam/Make/options`. Then we can call the member functions defined in `UQsimpleFoam`. 
+
+  
+
++ OpenFoam has deliberately isolated **solvers** from **turbulence models**, I guess, to prevent compilation errors and save time. Also this is efficient for people who only need to concentrate on changing one of them. 
