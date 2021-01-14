@@ -319,6 +319,16 @@ From testing and investigation, inside the `main()` the non-trivial user-defined
 
 ##### Jan 13th 2021 - How to access created functions in `UQkOmegaSST` from `main()` (Summary after talking to Weicheng)
 
+==The following piece of code shows the hierarchy that will be needed for casting, like what weicheng did in the UQsimpleFoam.H== 
+
+`Foam::RASModels::UQkOmegaSST<Foam::IncompressibleTurbulenceModel<Foam::transportModel> >:`
+
+
+
+==**Very important point that I have found after numerous testing!!!!!!:**==
+
+**Once you have ==added/replaced== the directory of the include folder for any turbulence models, e.g. UQkOmegaSST, to the `options` of UQsimpleFoam (see below for detailed info), every time you made changes inside `UQkOmegaSST.C/H` and `./Allwmake`, then you must `wmake` for the UQsimpleFoam to update. Otherwise, you may get error messages such as: `segmentation fault` or more likely `index 0 out of range` .**
+
 + You must put the member function you want to access under `public`
 + Go to `UEqun.H` and add `#include "UQkOmegaSST.H"`
 
@@ -330,8 +340,779 @@ From testing and investigation, inside the `main()` the non-trivial user-defined
 
   
 
-  Ans: It should notice that compilation for **solvers**, i.e. `UQsimpleFoam` using `wmake` is distinct from the compilation for **turbulence models**, i.e. `UQsimpleFoam` using `./Allwmake`. My understanding: as the executable file of `UQsimpleFoam` , i.e. `EXE = $(FOAM_USER_APPBIN)/UQsimpleFoam` is also stored under `EXE = $(FOAM_USER_APPBIN` directory in which the executable files relating to my **UQ turbulence model** is also stored. From the **UQ turbulence model** perspective, it can see **UQsimpleFoam** solver as this is specified in `turbulenceProperties` . However from **UQsimpleFoam** perspective, it cannot see the **UQkOmegaSST** model, unless we **add the relative path name of the `Include`** directory to `/root/OpenFOAM/-v1812/applications/solvers/incompressible/UQsimpleFoam/Make/options`. Then we can call the member functions defined in `UQsimpleFoam`. 
+  Ans: It should notice that compilation for **solvers**, i.e. `UQsimpleFoam` using `wmake` is distinct from the compilation for **turbulence models**, i.e. `UQsimpleFoam` using `./Allwmake`. My understanding: as the executable file of `UQsimpleFoam` , i.e. `EXE = $(FOAM_USER_APPBIN)/UQsimpleFoam` is also stored under `EXE = $(FOAM_USER_APPBIN` directory in which the executable files relating to my **UQ turbulence model** is also stored. From the **UQ turbulence model** perspective, it can see **UQsimpleFoam** solver as this is specified in `turbulenceProperties` . However from **UQsimpleFoam** perspective, it cannot see the **UQkOmegaSST** model, unless we **add the relative path name of the `Include`** directory to `/root/OpenFOAM/-v1812/applications/solvers/incompressible/UQsimpleFoam/Make/options`. Then we can call the member functions defined in `UQsimpleFoam`. **In short**, those included `Include` folders for **any solvers** point to the original files under `src`, **NOT** in where you have created your own model, therefore need to specify clearly.
 
   
 
 + OpenFoam has deliberately isolated **solvers** from **turbulence models**, I guess, to prevent compilation errors and save time. Also this is efficient for people who only need to concentrate on changing one of them. 
++ A weird thing has happened later today, when I was recompiling `wmake` the `UQsimpleFoam`, an error message: `error: "namespace definition is not allowed here"`, and this issue was resolved by putting `#include "UQkOmegaSST.H"` outside the `main()`. Why this is weird is it did compile fine in the morning however did not work later afternoon. What I have done was just to changing the content in `UQkOmegaSST.C/H`, and change the names of them by `mv` and `cp` so as to test how the backup version comes out to be. Would this action affect the process of compilation? 
+
+
+
+14. 
+
+##### Jan 15th 2021 - pass by reference (`&`) with `const` , i.e. `const type& var_ref`  vs copy
+
+**Very important study!**, see the code and comments below:
+
+```c++
+template<class BasicTurbulenceModel>
+tmp<volSymmTensorField> UQkOmegaSST<BasicTurbulenceModel>::Perturb_UiUj
+(
+    const volSymmTensorField& Rij,
+    const volSymmTensorField& Bij
+) 
+{
+  
+    tmp<volSymmTensorField> tPerturb_UiUj
+    (
+        new volSymmTensorField
+        (
+            IOobject
+            (
+                IOobject::groupName("Perturb_UiUj", this->alphaRhoPhi_.group()),
+                this->runTime_.timeName(),
+                this->mesh_
+            ),
+            this->mesh_,
+            dimensionSet(0, 2, -2, 0, 0, 0, 0)
+        )
+    );
+
+    volSymmTensorField& Perturb_UiUj = tPerturb_UiUj.ref();
+    
+    forAll(Perturb_UiUj, celli)
+    {
+      /* The difference between _Rij _Bij and _k and _nut is: 
+           _Rij and _Bij are references that have lifetime only wihtin the forAll scope. Therefore they are
+           not restricted to "const" method of Perturb_UiUj. In other words, they can either be
+
+           1. symmTensor _Rij = Rij[celli] copy to and prone to be changed
+           2. symmTensor& _Rij = Rij[celli] reference to and prone to be changed 
+           3. const symmTensor _Rij = Rij[celli] copy to but fixed 
+           4. const symmTensor& _Rij = Rij[celli] reference to but fixed
+           and the same applies to _Bij
+
+           On the other hand, _k and _nut are references to the members of kOmegaSSTBase class, and the "const"
+           method of Perturb_UiUj must ensure these two references cannot be modified, therefore they must retain
+           the following two forms
+
+           2. const scalar _k = k_[celli] copy to and fixed
+           1. const scalar& _k = k_[celli] reference to and fixed
+           and the same applies to _nut 
+           
+           Again, Rij[celli] or k_[cellli] are deferencing and actual variable, therefore can either be copied or referenced,
+           specifically var_store = Rij[celli] or var_store& = Rij[celli] */
+        
+
+        const symmTensor& _Rij = Rij[celli]; //const is not necessary in terms of programming perspective
+        const symmTensor& _Bij = Bij[celli]; //const is not necessary in terms of programming perspective
+
+        const scalar& _k = this->k_[celli]; //const is necessary in terms of programming perspective
+        const scalar& _nut = this->nut_[celli]; //const is necessary in terms of programming perspective
+
+      /* Note both Rij and Bij are const references to their corresponding variables 
+      	 if they are supposed to be used DIRECTLY in below, I marked them using "". 
+         the reference type must also be marked "const", i.e. const symmTensor& _Rij in the MyUQ.C
+         On the other hand, if dereferencing them and assign them to variables _Rij and _Bij (
+         means copying), you can either do with or without "const", like so: const symmTensor& _Rij or symmTensor& _Rij
+         in the MyUQ.C/H. The reason for that is an actual variable can be referenced by "const" (promise not to change it) 
+         or without "const" (no promise made to Not change it). 
+         
+         In short, const reference& must correspond to 
+         const reference&. In contrary, for actual variables just it does not matter and it is up to the user to 
+         decide if "const" reference should be used. */
+
+        symmTensor Bij_OF;
+        symmTensor UiUj_OF;
+        symmTensor Sij_OF;
+        
+        double** newBij 	= new double* [3];
+        double** newuiuj 	= new double* [3];
+        double** newSij		= new double* [3];
+        
+        for (int j = 0; j < 3; j++)
+        {
+            newBij[j] 	= new double [3];
+            newuiuj[j]	= new double [3];
+            newSij[j]   = new double [3];
+        } 
+        
+    //
+        UQ uq(this->k_[celli], this->nut_[celli], "_Rij", celli);
+        
+        uq.EigenSpace(Bij_OF, UiUj_OF, Sij_OF, //directly used by OF
+                      newBij, newuiuj, newSij, //in double format passed to OF
+                      "_Bij", celli);//passed to MyUQ.C
+        
+
+        Perturb_UiUj[celli] = UiUj_OF;
+        
+
+        
+        for (int j = 0; j < 3; j++)
+        {
+            delete [] newBij[j];
+            delete [] newuiuj[j];
+        }
+        delete [] newBij;
+        delete [] newuiuj;
+    }
+    
+    return tPerturb_UiUj;
+}
+```
+
+
+
+
+
+
+
+```c++
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     |
+    \\  /    A nd           | Copyright (C) 2016-2017 OpenFOAM Foundation
+     \\/     M anipulation  |
+-------------------------------------------------------------------------------
+License
+    This file is part of OpenFOAM.
+
+    OpenFOAM is free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    OpenFOAM is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+    FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+    for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
+
+\*---------------------------------------------------------------------------*/
+
+#include "kOmegaSSTLM.H"
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+namespace Foam
+{
+namespace RASModels
+{
+
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
+
+template<class BasicTurbulenceModel>
+tmp<volScalarField> kOmegaSSTLM<BasicTurbulenceModel>::F1
+(
+    const volScalarField& CDkOmega
+) const
+{
+    const volScalarField Ry(this->y_*sqrt(this->k_)/this->nu());
+    const volScalarField F3(exp(-pow(Ry/120.0, 8)));
+
+    Info<< "Fuji is important" << endl;
+    return max(kOmegaSST<BasicTurbulenceModel>::F1(CDkOmega), F3);
+}
+
+
+template<class BasicTurbulenceModel>
+tmp<volScalarField::Internal> kOmegaSSTLM<BasicTurbulenceModel>::Pk
+(
+    const volScalarField::Internal& G
+) const
+{
+    return gammaIntEff_*kOmegaSST<BasicTurbulenceModel>::Pk(G);
+}
+
+
+template<class BasicTurbulenceModel>
+tmp<volScalarField::Internal> kOmegaSSTLM<BasicTurbulenceModel>::epsilonByk
+(
+    const volScalarField& F1,
+    const volTensorField& gradU
+) const
+{
+    return
+        min(max(gammaIntEff_, scalar(0.1)), scalar(1))
+       *kOmegaSST<BasicTurbulenceModel>::epsilonByk(F1, gradU);
+}
+
+
+template<class BasicTurbulenceModel>
+tmp<volScalarField::Internal> kOmegaSSTLM<BasicTurbulenceModel>::Fthetat
+(
+    const volScalarField::Internal& Us,
+    const volScalarField::Internal& Omega,
+    const volScalarField::Internal& nu
+) const
+{
+    const volScalarField::Internal& omega = this->omega_();
+    const volScalarField::Internal& y = this->y_();
+
+    dimensionedScalar deltaMin("deltaMin", dimLength, SMALL);
+    volScalarField::Internal delta
+    (
+        max(375*Omega*nu*ReThetat_()*y/sqr(Us), deltaMin)
+    );
+
+    const volScalarField::Internal ReOmega(sqr(y)*omega/nu);
+    const volScalarField::Internal Fwake(exp(-sqr(ReOmega/1e5)));
+
+    return tmp<volScalarField::Internal>
+    (
+        new volScalarField::Internal
+        (
+            IOobject::groupName("Fthetat", this->alphaRhoPhi_.group()),
+            min
+            (
+                max
+                (
+                    Fwake*exp(-pow4((y/delta))),
+                    (1 - sqr((gammaInt_() - 1.0/ce2_)/(1 - 1.0/ce2_)))
+                ),
+                scalar(1)
+            )
+        )
+    );
+}
+
+
+template<class BasicTurbulenceModel>
+tmp<volScalarField::Internal>
+kOmegaSSTLM<BasicTurbulenceModel>::ReThetac() const
+{
+    tmp<volScalarField::Internal> tReThetac
+    (
+        new volScalarField::Internal
+        (
+            IOobject
+            (
+                IOobject::groupName("ReThetac", this->alphaRhoPhi_.group()),
+                this->runTime_.timeName(),
+                this->mesh_
+            ),
+            this->mesh_,
+            dimless
+        )
+    );
+    volScalarField::Internal& ReThetac = tReThetac.ref();
+
+    forAll(ReThetac, celli)
+    {
+        const scalar ReThetat = ReThetat_[celli];
+
+        ReThetac[celli] =
+            ReThetat <= 1870
+          ?
+            ReThetat
+          - 396.035e-2
+          + 120.656e-4*ReThetat
+          - 868.230e-6*sqr(ReThetat)
+          + 696.506e-9*pow3(ReThetat)
+          - 174.105e-12*pow4(ReThetat)
+          :
+            ReThetat - 593.11 - 0.482*(ReThetat - 1870);
+    }
+
+    return tReThetac;
+}
+
+
+template<class BasicTurbulenceModel>
+tmp<volScalarField::Internal> kOmegaSSTLM<BasicTurbulenceModel>::Flength
+(
+    const volScalarField::Internal& nu
+) const
+{
+    tmp<volScalarField::Internal> tFlength
+    (
+        new volScalarField::Internal
+        (
+            IOobject
+            (
+                IOobject::groupName("Flength", this->alphaRhoPhi_.group()),
+                this->runTime_.timeName(),
+                this->mesh_,
+                IOobject::NO_READ,//Added by Minghan
+                IOobject::AUTO_WRITE//Added by Minghan No output in time internal folders!
+            ),
+            this->mesh_,
+            dimless
+        )
+    );
+    volScalarField::Internal& Flength = tFlength.ref();
+
+    const volScalarField::Internal& omega = this->omega_();
+    const volScalarField::Internal& y = this->y_();
+
+    forAll(ReThetat_, celli)
+    {
+        const scalar ReThetat = ReThetat_[celli];
+
+        if (ReThetat < 400)
+        {
+            Flength[celli] =
+                398.189e-1
+              - 119.270e-4*ReThetat
+              - 132.567e-6*sqr(ReThetat);
+        }
+        else if (ReThetat < 596)
+        {
+            Flength[celli] =
+                263.404
+              - 123.939e-2*ReThetat
+              + 194.548e-5*sqr(ReThetat)
+              - 101.695e-8*pow3(ReThetat);
+        }
+        else if (ReThetat < 1200)
+        {
+            Flength[celli] = 0.5 - 3e-4*(ReThetat - 596);
+        }
+        else
+        {
+            Flength[celli] = 0.3188;
+        }
+
+        const scalar Fsublayer =
+            exp(-sqr(sqr(y[celli])*omega[celli]/(200*nu[celli])));
+
+        Flength[celli] = Flength[celli]*(1 - Fsublayer) + 40*Fsublayer;
+    }
+
+    return tFlength;
+}
+
+
+template<class BasicTurbulenceModel>
+tmp<volScalarField::Internal> kOmegaSSTLM<BasicTurbulenceModel>::ReThetat0
+(
+    const volScalarField::Internal& Us,
+    const volScalarField::Internal& dUsds,
+    const volScalarField::Internal& nu
+) const
+{
+    tmp<volScalarField::Internal> tReThetat0
+    (
+        new volScalarField::Internal
+        (
+            IOobject
+            (
+                IOobject::groupName("ReThetat0", this->alphaRhoPhi_.group()),
+                this->runTime_.timeName(),
+                this->mesh_
+            ),
+            this->mesh_,
+            dimless
+        )
+    );
+    volScalarField::Internal& ReThetat0 = tReThetat0.ref();
+
+    const volScalarField& k = this->k_;
+
+    label maxIter = 0;
+
+    forAll(ReThetat0, celli)
+    {
+        const scalar Tu
+        (
+            max(100*sqrt((2.0/3.0)*k[celli])/Us[celli], scalar(0.027))
+        );
+
+        // Initialize lambda to zero.
+        // If lambda were cached between time-steps convergence would be faster
+        // starting from the previous time-step value.
+        scalar lambda = 0;
+
+        scalar lambdaErr;
+        scalar thetat;
+        label iter = 0;
+
+        do
+        {
+            // Previous iteration lambda for convergence test
+            const scalar lambda0 = lambda;
+
+            if (Tu <= 1.3)
+            {
+                const scalar Flambda =
+                    dUsds[celli] <= 0
+                  ?
+                    1
+                  - (
+                     - 12.986*lambda
+                     - 123.66*sqr(lambda)
+                     - 405.689*pow3(lambda)
+                    )*exp(-pow(Tu/1.5, 1.5))
+                  :
+                    1
+                  + 0.275*(1 - exp(-35*lambda))
+                   *exp(-Tu/0.5);
+
+                thetat =
+                    (1173.51 - 589.428*Tu + 0.2196/sqr(Tu))
+                   *Flambda*nu[celli]
+                   /Us[celli];
+            }
+            else
+            {
+                const scalar Flambda =
+                    dUsds[celli] <= 0
+                  ?
+                    1
+                  - (
+                      -12.986*lambda
+                      -123.66*sqr(lambda)
+                      -405.689*pow3(lambda)
+                    )*exp(-pow(Tu/1.5, 1.5))
+                  :
+                    1
+                  + 0.275*(1 - exp(-35*lambda))
+                   *exp(-2*Tu);
+
+                thetat =
+                    331.50*pow((Tu - 0.5658), -0.671)
+                   *Flambda*nu[celli]/Us[celli];
+            }
+
+            lambda = sqr(thetat)/nu[celli]*dUsds[celli];
+            lambda = max(min(lambda, 0.1), -0.1);
+
+            lambdaErr = mag(lambda - lambda0);
+
+            maxIter = max(maxIter, ++iter);
+
+        } while (lambdaErr > lambdaErr_);
+
+        ReThetat0[celli] = max(thetat*Us[celli]/nu[celli], scalar(20));
+    }
+
+    if (maxIter > maxLambdaIter_)
+    {
+        WarningInFunction
+            << "Number of lambda iterations exceeds maxLambdaIter("
+            << maxLambdaIter_ << ')'<< endl;
+    }
+
+    return tReThetat0;
+}
+
+
+template<class BasicTurbulenceModel>
+tmp<volScalarField::Internal> kOmegaSSTLM<BasicTurbulenceModel>::Fonset
+(
+    const volScalarField::Internal& Rev,
+    const volScalarField::Internal& ReThetac,
+    const volScalarField::Internal& RT
+) const
+{
+    const volScalarField::Internal Fonset1(Rev/(2.193*ReThetac));
+
+    const volScalarField::Internal Fonset2
+    (
+        min(max(Fonset1, pow4(Fonset1)), scalar(2))
+    );
+
+    const volScalarField::Internal Fonset3(max(1 - pow3(RT/2.5), scalar(0)));
+
+    return tmp<volScalarField::Internal>
+    (
+        new volScalarField::Internal
+        (
+            IOobject::groupName("Fonset", this->alphaRhoPhi_.group()),
+            max(Fonset2 - Fonset3, scalar(0))
+        )
+    );
+}
+
+
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+
+template<class BasicTurbulenceModel>
+kOmegaSSTLM<BasicTurbulenceModel>::kOmegaSSTLM
+(
+    const alphaField& alpha,
+    const rhoField& rho,
+    const volVectorField& U,
+    const surfaceScalarField& alphaRhoPhi,
+    const surfaceScalarField& phi,
+    const transportModel& transport,
+    const word& propertiesName,
+    const word& type
+)
+:
+    kOmegaSST<BasicTurbulenceModel>
+    (
+        alpha,
+        rho,
+        U,
+        alphaRhoPhi,
+        phi,
+        transport,
+        propertiesName,
+        typeName
+    ),
+
+    ca1_
+    (
+        dimensionedScalar::lookupOrAddToDict
+        (
+            "ca1",
+            this->coeffDict_,
+            2
+        )
+    ),
+    ca2_
+    (
+        dimensionedScalar::lookupOrAddToDict
+        (
+            "ca2",
+            this->coeffDict_,
+            0.06
+        )
+    ),
+    ce1_
+    (
+        dimensionedScalar::lookupOrAddToDict
+        (
+            "ce1",
+            this->coeffDict_,
+            1
+        )
+    ),
+    ce2_
+    (
+        dimensionedScalar::lookupOrAddToDict
+        (
+            "ce2",
+            this->coeffDict_,
+            50
+        )
+    ),
+    cThetat_
+    (
+        dimensionedScalar::lookupOrAddToDict
+        (
+            "cThetat",
+            this->coeffDict_,
+            0.03
+        )
+    ),
+    sigmaThetat_
+    (
+        dimensionedScalar::lookupOrAddToDict
+        (
+            "sigmaThetat",
+            this->coeffDict_,
+            2
+        )
+    ),
+    lambdaErr_
+    (
+        this->coeffDict_.lookupOrDefault("lambdaErr", 1e-6)
+    ),
+    maxLambdaIter_
+    (
+        this->coeffDict_.lookupOrDefault("maxLambdaIter", 10)
+    ),
+    deltaU_("deltaU", dimVelocity, SMALL),
+
+    ReThetat_
+    (
+        IOobject
+        (
+            IOobject::groupName("ReThetat", alphaRhoPhi.group()),
+            this->runTime_.timeName(),
+            this->mesh_,
+            IOobject::MUST_READ,
+            IOobject::AUTO_WRITE
+        ),
+        this->mesh_
+    ),
+
+    gammaInt_
+    (
+        IOobject
+        (
+            IOobject::groupName("gammaInt", alphaRhoPhi.group()),
+            this->runTime_.timeName(),
+            this->mesh_,
+            IOobject::MUST_READ,
+            IOobject::AUTO_WRITE
+        ),
+        this->mesh_
+    ),
+
+    gammaIntEff_
+    (
+        IOobject
+        (
+            IOobject::groupName("gammaIntEff", alphaRhoPhi.group()),
+            this->runTime_.timeName(),
+            this->mesh_,
+            IOobject::NO_READ,//Added by minghan: no_read means initial value (file) of gammaInteff in 0 is needed!
+            IOobject::AUTO_WRITE//will write the field of gammaIntEff_ at control time step
+        ),
+        this->mesh_,
+        dimensionedScalar(dimless, Zero)//Also note since no read is used, dimesion needs to be specified
+    )
+{
+    if (type == typeName)
+    {
+        this->printCoeffs(type);
+    }
+}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+template<class BasicTurbulenceModel>
+bool kOmegaSSTLM<BasicTurbulenceModel>::read()
+{
+    if (kOmegaSST<BasicTurbulenceModel>::read())
+    {
+        ca1_.readIfPresent(this->coeffDict());
+        ca2_.readIfPresent(this->coeffDict());
+        ce1_.readIfPresent(this->coeffDict());
+        ce2_.readIfPresent(this->coeffDict());
+        sigmaThetat_.readIfPresent(this->coeffDict());
+        cThetat_.readIfPresent(this->coeffDict());
+        this->coeffDict().readIfPresent("lambdaErr", lambdaErr_);
+        this->coeffDict().readIfPresent("maxLambdaIter", maxLambdaIter_);
+
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+
+template<class BasicTurbulenceModel>
+void kOmegaSSTLM<BasicTurbulenceModel>::correctReThetatGammaInt()
+{
+    // Local references
+    const alphaField& alpha = this->alpha_;
+    const rhoField& rho = this->rho_;
+    const surfaceScalarField& alphaRhoPhi = this->alphaRhoPhi_;
+    const volVectorField& U = this->U_;
+    const volScalarField& k = this->k_;
+    const volScalarField& omega = this->omega_;
+    const tmp<volScalarField> tnu = this->nu();
+    const volScalarField::Internal& nu = tnu()();
+    const volScalarField::Internal& y = this->y_();
+    fv::options& fvOptions(fv::options::New(this->mesh_));
+
+    // Fields derived from the velocity gradient
+    tmp<volTensorField> tgradU = fvc::grad(U);
+    const volScalarField::Internal Omega(sqrt(2*magSqr(skew(tgradU()()))));
+    const volScalarField::Internal S(sqrt(2*magSqr(symm(tgradU()()))));
+    const volScalarField::Internal Us(max(mag(U()), deltaU_));
+    const volScalarField::Internal dUsds((U() & (U() & tgradU()()))/sqr(Us));
+    tgradU.clear();
+
+    const volScalarField::Internal Fthetat(this->Fthetat(Us, Omega, nu));
+
+    {
+        const volScalarField::Internal t(500*nu/sqr(Us));
+        const volScalarField::Internal Pthetat
+        (
+            alpha()*rho()*(cThetat_/t)*(1 - Fthetat)
+        );
+
+        // Transition onset momentum-thickness Reynolds number equation
+        tmp<fvScalarMatrix> ReThetatEqn
+        (
+            fvm::ddt(alpha, rho, ReThetat_)
+          + fvm::div(alphaRhoPhi, ReThetat_)
+          - fvm::laplacian(alpha*rho*DReThetatEff(), ReThetat_)
+         ==
+            Pthetat*ReThetat0(Us, dUsds, nu) - fvm::Sp(Pthetat, ReThetat_)
+          + fvOptions(alpha, rho, ReThetat_)
+        );
+
+        ReThetatEqn.ref().relax();
+        fvOptions.constrain(ReThetatEqn.ref());
+        solve(ReThetatEqn);
+        fvOptions.correct(ReThetat_);
+        bound(ReThetat_, 0);
+    }
+
+    const volScalarField::Internal ReThetac(this->ReThetac());
+    const volScalarField::Internal Rev(sqr(y)*S/nu);
+    const volScalarField::Internal RT(k()/(nu*omega()));
+
+    {
+        const volScalarField::Internal Pgamma
+        (
+            alpha()*rho()
+           *ca1_*Flength(nu)*S*sqrt(gammaInt_()*Fonset(Rev, ReThetac, RT))
+        );
+
+        const volScalarField::Internal Fturb(exp(-pow4(0.25*RT)));
+
+        const volScalarField::Internal Egamma
+        (
+            alpha()*rho()*ca2_*Omega*Fturb*gammaInt_()
+        );
+
+        // Intermittency equation
+        tmp<fvScalarMatrix> gammaIntEqn
+        (
+            fvm::ddt(alpha, rho, gammaInt_)
+          + fvm::div(alphaRhoPhi, gammaInt_)
+          - fvm::laplacian(alpha*rho*DgammaIntEff(), gammaInt_)
+        ==
+            Pgamma - fvm::Sp(ce1_*Pgamma, gammaInt_)
+          + Egamma - fvm::Sp(ce2_*Egamma, gammaInt_)
+          + fvOptions(alpha, rho, gammaInt_)
+        );
+
+        gammaIntEqn.ref().relax();
+        fvOptions.constrain(gammaIntEqn.ref());
+        solve(gammaIntEqn);
+        fvOptions.correct(gammaInt_);
+        bound(gammaInt_, 0);
+    }
+
+    const volScalarField::Internal Freattach(exp(-pow4(RT/20.0)));
+    const volScalarField::Internal gammaSep
+    (
+        min(2*max(Rev/(3.235*ReThetac) - 1, scalar(0))*Freattach, scalar(2))
+       *Fthetat
+    );
+
+    gammaIntEff_ = max(gammaInt_(), gammaSep);
+}
+
+
+template<class BasicTurbulenceModel>
+void kOmegaSSTLM<BasicTurbulenceModel>::correct()
+{
+    if (!this->turbulence_)
+    {
+        return;
+    }
+
+    // Correct k and omega
+    kOmegaSST<BasicTurbulenceModel>::correct();
+
+    // Correct ReThetat and gammaInt
+    correctReThetatGammaInt();
+}
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+} // End namespace RASModels
+} // End namespace Foam
+
+// ************************************************************************* //
+
+```
+
