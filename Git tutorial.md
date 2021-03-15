@@ -1,5 +1,9 @@
 # Git tutorial
 
+[toc]
+
+
+
 ### Introduction
 
 1. Version control system (VCS) for tracking changes in computer files.
@@ -109,7 +113,7 @@ git push -u --force origin main
 
 
 
-**git branch**
+### git branch
 
 [push local branch on Github](https://stackoverflow.com/questions/5423517/how-do-i-push-a-local-git-branch-to-master-branch-in-the-remote)
 
@@ -123,4 +127,18 @@ git push -u --force origin main
 git checkout main //checkout the current branch and move to the branch wanted ("main" for this case)
 
 ```
+
+
+
+### [How can I determine the URL that a local Git repository was originally cloned from?](https://stackoverflow.com/questions/4089430/how-can-i-determine-the-url-that-a-local-git-repository-was-originally-cloned-fr)
+
+`git config --get remote.origin.url`
+
+
+
+### How to undo a git add with Git Reset
+
+`git reset <file>` or `git reset` to unstage all changes
+
+[how to undo a git add with Git reset](https://forum.freecodecamp.org/t/how-to-undo-a-git-add-with-git-reset/13237)
 

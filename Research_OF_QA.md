@@ -1362,7 +1362,54 @@ defined in `kepsilon.C` which is the k per time interval interior of a cell. `fv
 
 refer to Notes on Feb 25th 2021
 
- 		
+
+
+##### March 4th 2021 - OpenFoam units
+
+For an incompressible flow, all the equations are divided with density. For example, wall shear stress in OpenFoam is in the units:
+
+**Pa/r = N/m2/kg/m3 = kg*m/s2/m2/kg/m3 = m2/s2, where r is density**.
+
+
+
+##### March 13th 2021 - Machine learning (Weicheng and Minghan)
+
+```
+
+Weicheng
+还是那句话，有好的data当然会有帮助！但是机器学习本质是如何高效利用所有已知的东西，包括数据和一些理论（比如f=ma，牛顿三定律，PV=nRT），这包括两层意思：
+
+1. 如何把所有已知的数据发挥到极致
+2. 如何把所有已知的知识发挥到极致
+   不同的方法在这两点上各有优势。bayesian相对于neural networks在2上更有优势而已。
+   
+   即使“没有”数据，也可以讨论如何获得数据；事实上很少有真正没有数据的情况。顶多是获得数据难，没有好数据较难而已。公式本身就可以变成数据，譬如通过monte carlo 方法。
+   
+   我们对数学的理解，往往从定义开始，似乎是自上而下。但是很多机器学习的问题，我们学习的过程是自下而上。
+   
+   Minghan
+  我昨天想了一下，可能learning完后面implement是可以的。
+
+我用的模型是trainsition（转捩）模型，他有一个condition是：如果检测的transition，开启transition处理模式，
+
+而这个transition mechanisms只发生在那个我们用learning处理的zone里面。也就是说可以learning后把结果并入transtion condition，及检测到调用，检测不到（trasition没有发生）保持原状，
+```
+
+
+
+##### March 15th 2021 - C++ Polymorphism in OpenFoam
+
+Using an real example to explain polymorphism in Openfoam:
+
+In `UQsimpleFoam`, `turbulence->correct()` instantiates the selected class, e.g. `UQkOmegaSSTLM`. This means any **pure virtual functions** being used will be overridden if redefined in the`UQkOmegaSSTLM` class. In this particular example, `Pk(G)` is redefined in the `UQkOmegaSSTLM` class, `return gammaIntEff_*UQkOmegaSST<BasicTurbulenceModel>::Pk(G);`. And `UQkOmegaSST<BasicTurbulenceModel>::Pk(G);`  forces the linker to search where `Pk(G)` is defined by providing the "path" to it.  Note if `this->Pk(G)` is used, you will encounter an infinite loop! Because as mentioned earlier, `turbulence->correct()`  tells `this->` to point to the current instance, i.e. `UQkOmegaSSTLM`. 
+
+In short, for any redefined **(pure) virtual functions** in the current instantiated class, `this->` always points to these functions in this instantiated class. For any **virtual functions** that are NOT redefined in the current instantiated class, `this->` will point to the right ones based on polymorphism, e.g. in its parent class. Note child class **is** parent class, which contains everything in the parent class and some additional stuff! In this example, `UQkOmegaSST<BasicTurbulenceModel>::Pk(G)` will call the `Pk(G)` defined in `kOmegaSSTBase` class, which is the parent class of both `UQkOmegaSST` and `UQkOmegaSSTLM`. 
+
+
+
+
+
+
 
 ##### C++/OF error messages and fixing
 
@@ -1391,6 +1438,19 @@ refer to Notes on Feb 25th 2021
   LIB = $(FOAM_USER_LIBBIN)/libMyUQ
   ```
 
+  Maybe need to modify this in order to successfully compile MyUQ.so into a separately export LD_LIBRARY_PATH=/path/to/the/folder/that/stores/your/uq.so/:$LD_LIBRARY_PATH from weicheng Mar 11th 2021
+
+  `cat /opt/OpenFOAM/setImage_v1812.sh 
+  source /opt/OpenFOAM/OpenFOAM-v1812/etc/bashrc
+  export LD_LIBRARY_PATH=$WM_THIRD_PARTY_DIR/platforms/linux64Gcc/ParaView-5.6.0/lib/mesa:$LD_LIBRARY_PATH
+  export LD_LIBRARY_PATH=$WM_THIRD_PARTY_DIR/platforms/linux64Gcc/ParaView-5.6.0/lib/paraview-5.6/plugins:$LD_LIBRARY_PATH
+  export LD_LIBRARY_PATH=$WM_THIRD_PARTY_DIR/platforms/linux64Gcc/qt-5.9.0/lib:$LD_LIBRARY_PATH
+  export LD_LIBRARY_PATH=$WM_THIRD_PARTY_DIR/platforms/linux64/zlib-1.2.11/lib:$LD_LIBRARY_PATH
+  export PATH=$WM_THIRD_PARTY_DIR/platforms/linux64Gcc/qt-5.9.0/bin:$PATH
+  export QT_PLUGIN_PATH=$WM_THIRD_PARTY_DIR/platforms/linux64Gcc/qt-5.9.0/plugins`
+
+  
+
   ~~Under the **turbulenceModels** directory ensures MyUQ header files go to the `lnclude` folder for **turbulenceModels**, and will in turn be included in `incompressibleTurbulenceModels` and `compressibleTurbulenceModels`. If you want to put MyUQ header files outside of **turbulenceModels** directory, you must specify its path to the header files in "options"~~.
 
   `$FOAM_USER_LIBBIN = /root/OpenFOAM/-v1812/platforms/linux64GccDPInt32Debug/lib`
@@ -1398,6 +1458,8 @@ refer to Notes on Feb 25th 2021
 + `type& var(this->fun())` **No `&` ** which can be compared to `type& var1 = var2(this->fun())` which can have `&`
 
 + ==`wmakeLnInclude -u turbulenceModels`== can be used to solve `no matching call to function error`, which is a **linking error**. This command will update the **old linkages with the new ones!!** I have spent more than 6 hours today (**Jan 24th 2021**) to fix this error. 
+
+
 
 
 
