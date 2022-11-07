@@ -1,4 +1,4 @@
-tmux cheat sheet
+b%tmux cheat sheet
 
 1. get started `tmux`
 

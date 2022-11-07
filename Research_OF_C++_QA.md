@@ -1405,6 +1405,8 @@ In `UQsimpleFoam`, `turbulence->correct()` instantiates the selected class, e.g.
 
 In short, for any redefined **(pure) virtual functions** in the current instantiated class, `this->` always points to these functions in this instantiated class. For any **virtual functions** that are NOT redefined in the current instantiated class, `this->` will point to the right ones based on polymorphism, e.g. in its parent class. Note child class **is** parent class, which contains everything in the parent class and some additional stuff! In this example, `UQkOmegaSST<BasicTurbulenceModel>::Pk(G)` will call the `Pk(G)` defined in `kOmegaSSTBase` class, which is the parent class of both `UQkOmegaSST` and `UQkOmegaSSTLM`. 
 
+==refer to my notes==
+
 
 
 
@@ -1460,6 +1462,48 @@ In short, for any redefined **(pure) virtual functions** in the current instanti
 + ==`wmakeLnInclude -u turbulenceModels`== can be used to solve `no matching call to function error`, which is a **linking error**. This command will update the **old linkages with the new ones!!** I have spent more than 6 hours today (**Jan 24th 2021**) to fix this error. 
 
 
+
+##### Jun 19th 2021 - Building understanding from calculating turbulence production (Pk) in OpenFoam
+
+```
+From Minghan
+
+我刚刚出去走路又想了一陈子，我觉得应该不用internal结果跟准确：I changed my opinion on "more accurate results with Internal", I think with boundary effect taken into account results will be more realistic. Internal is added during the calculation 
+//process and is unfinished product. Once velocity field and nut are calculated, turbulence production （Pk）can be drawn from these complete flow fields.
+
+你昨天试的这个方法我很好奇成功以后是怎样的，因为是技术脱离物理，我好奇会有怎样的结果。我之前也试过类似的。我目前的理解是我们要吧internal和boundary拼接起来。装上假的boundary patches，让它能够凑齐所有零件。这里面有一个要注意的是units要保持一致。比如k和R的units是一致的，所有可以用k的boundary去替代R。目前没有一个单独的quantity有着和Pk一样的units。。。nut和PK是不同的。
+
+我突然有个理解：type var 和 type* var 都是在 assign memory to it,如果type是class，又说是instantiate var 而var又叫做object/instance。是不是如果不严格的话，int var，var也可以是个object，但是int不是class，好像通常不这么叫。
+
+在createFields里面的最后有一个smart pointer 在OF里面叫做autoPtr，就是它创建了“turbulence”这个pointer，e.g. turbulence->fun, 我一直都在找OF里面这些class到底是在哪被instantiated的，现在觉得就是从这里，我也想听听你的理解。一旦这个弄清楚，后面的就明白怎么工作的，比如假设turbulence就是去instantiate 所有turbulence model的，我选了UQkOmegaSSTLMturbulence model，turbulence somehow instantiated 这个class，然后inheritance和polymorphism就自然可以call 所有methods from its parent classes。
+```
+
+```
+From minghan
+
+autoPtr<incompressible::turbulenceModel> turbulence
+(
+    incompressible::turbulenceModel::New(U, phi, laminarTransport)
+);
+
+volScalarField k_output = (
+                static_cast<
+                        RASModels::UQkOmegaSSTLM<
+                            IncompressibleTurbulenceModel<transportModel>
+                        >
+                      &> (turbulence())
+                 ).k();
+
+
+
+给你说一下，昨天type不是影响差距的主要问题，是casting造成的，也就是上面我发的。（我晚上run了4个case在cedar和graham上，对比发现的）
+
+OF里面有一个重要的点就是autPtr和New，既复杂又重要，在solver里出现用来调用需要的模型。
+
+我现在在学这个，努力去弄清楚，因为会帮助我后面写自己的模型。
+
+刚刚看了一下，要建立autPtr目前对我来说不是很简单的事，要相互对应好。solver属于top level，下属很多inheritance，你可以观察一下最新版本的OF, turbulenceModel.H 有virtual omega（），但我的v1812就没有，刚刚试着加进去，报错在LESdynamic。。一个模型找不到，所以他有复杂的inheritance关系。现在能做的是在subclasses里面改，而不是在top level parent class，ie solver里面改。我觉得伟成你现在把OF的框架基本弄清楚了，你可以在CV里面写上OF，说不定能找到这方面的工作。
+```
 
 
 

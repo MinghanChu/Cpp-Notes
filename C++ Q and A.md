@@ -64,7 +64,7 @@
    }
    ```
 
-3. **Observed fact - parameter name vs variable name** 
+3. **Observation fact - parameter name vs variable name** 
 
    Within a same scope variable name should be same as its corresponding (sits at the same location) parameter name, e.g.
 

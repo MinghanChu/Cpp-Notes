@@ -74,3 +74,102 @@ So pay attention to it.
 
 In order to successfully execute the command above, you also need to specify which **`functionObjects`** , which is the already compiled library (application), the command is looking for. In this particular example, the functionObject named **`wallShearStress`** is selected.
 
+
+
+#### force coefficients
+
+`````
+Option            | Description
+none              | Trigger is disabled
+timeStep          | Trigger every 'Interval' time-steps, e.g. every x time steps
+writeTime         | Trigger every 'Interval' output times, i.e. alongside standard field output
+runTime           | Trigger every 'Interval' run time period, e.g. every x seconds of calculation time
+adjustableRunTime | Currently identical to "runTime"
+clockTime         | Trigger every 'Interval' clock time period
+cpuTime           | Trigger every 'Interval' CPU time period
+onEnd             | Trigger on end of simulation run
+
+executeControl: when the object is updated (for updating calculations or for management tasks),
+writeControl: when the object output is written (for writing the calculated data to disk).
+`````
+
+
+
+````c++
+//Note: "writeControl" might overlap the results from "executeControl", e.g. "executeControl timeStep" you will definitely 
+//have overlaps with time steps from "writeControl" 
+
+//RECOMMENDATIONS: 
+		//for small "deltaT" you may want to set "writeControl writeTime" instead of "writeControl timeStep", where the latter 
+		//will print too much data and hard to observe
+
+//Keep in mind: on default "executeControl timeStep", meaning QoIs at every time step will be printed out if you do not
+//deliberately set "executeControl"
+
+//OBSERVATIONS:
+//for force coefficients, i.e. Cd and Cl, even if you have set "writeControl writeTime", you will still have them printted
+//out every time step in the postprocessing folder. While for "yPlus" and "wallShearStress" for example, unless you set
+//"writeControl timeStep" you will only have them outputted at specified "writeInterval". In addition, you will also have
+
+	forceCoeffs //name can be anything
+	{
+		type 		forceCoeffs;//must be "forceCoeffs" (c++ type)
+		libs		("libforces.so"); //the utility (library) must be "libforces.so" for v1812
+		
+    //My understanding:
+    //writeControl
+    		//writeTime: output time/iteration interval specified by the user, i.e. "writeInterval"
+    		//timeStep: smallest time interval the simulation is proceeding forward, i.e. "deltaT"
+    
+    //writeInterval: Steps/time between write phases, depending on if "writeTime (writeInterval)" or "timeStep (deltaT)"
+    
+    //NOTE: No matter if "executeControl" is triggered, as long as "writeControl" is specified (on default "timeStep"), QoIs 
+		//(here forceCoeffs) will be computed. On the other hand, the purpose of "executeControl" is just used to add additional
+    //control for outputting that QoIs. You do not need "executeControl" unless you need to watch closely what is happening at
+    //particular time steps. 
+    
+		timeStart		20;//also controls when to output in postprocessing folder
+    timeEnd			25;
+    
+		writeControl	writeTime; //on default "timeStep": when "timeStep" is used you will have this particular field outputted 
+    												 //at every time step, meaning tons of data outputted!!!!!!!!!!!!
+		writeInterval	1; //on default "1"
+	
+    enabled	true;//true means printing out coefficients and false means skip this utility (no coefficients will be printted out)
+
+		log		no;//show results on GNU
+
+		//timeStart	0;
+		//timeEnd		1000;
+
+    //executeControl calculates/updates the quantities of interest
+    		//independent of “writeControl” which is dedicated to outputing results, while "executeControl" is for actual calculating
+    		//of the QoIs
+    		//executeInterval means n * executeControl (timeStep or writeTime) where n is the number of intervals you want QoIs to be
+        //computed 
+		executeControl  writeTime; //on default "timeStep"
+		executeInterval 1; //on default "1"
+		
+		patches
+		(
+			Airfoil
+		);
+	
+		rho		rhoInf;	
+		rhoInf		1.2;
+		CofR		(0 0 0);
+		pitchAxis	(0 1 0);
+		liftDir		(-0.139173 0.990268 0.00000);
+		dragDir		(0.990268 0.139173 0.00000);
+		magUInf		0.9;
+		lRef		1;
+		Aref		0.1;
+	}
+````
+
+
+
+
+
+
+

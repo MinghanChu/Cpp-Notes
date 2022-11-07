@@ -117,16 +117,62 @@ git push -u --force origin main
 
 [push local branch on Github](https://stackoverflow.com/questions/5423517/how-do-i-push-a-local-git-branch-to-master-branch-in-the-remote)
 
-```
-1. git checkout -b newbranch-Openfoam //checkout the current branch and create a new branch named "newbranch-Openfoam"
+` git push origin develop:master`
 
-2. go created a new branch named "newbranch-Openfoam" on github
+`git push <remote> <local branch name>:<remote branch to push into>`
 
-3. git push origin newbranch-Openfoam:newbranch-Openfoam //push files under the "newbranch-Openfoam" to the branch named "newbranch-Openfoam" on github (first newbranch-Openfoam means the branch github and the second one means that created on your local machine)
+[branching](https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging#_basic_merging)
 
-git checkout main //checkout the current branch and move to the branch wanted ("main" for this case)
+1. `git checkout -b <newbranch>` switch to a new branch "newbranch"
 
-```
+   equivalent to 
+
+   `git branch <newbranch>`  create "newbranch"
+
+   `git checkout <newbranch>` switch to "newbranch"
+
+2. After you feel satisfied with the content in "newbranch", merge "newbranch" into your "main"
+
+   `git checkout <newbranch>`
+
+   `git merge <newbranch>`
+
+3. Then you no longer need "newbranch" any more and need to delete it locally
+
+   `git branch -d <newbranch>`
+
+   delete it remotely
+
+   `git push origin --delete <newbranch>` for more useful commands refer to [deleting branches](https://gist.github.com/cmatskas/454e3369e6963a1c8c89)
+
+
+
+### git stash
+
+`git stash`
+
+Now you want to switch branches, but you don’t want to commit what you’ve been working on yet, so you’ll stash the changes. To push a new stash onto your stack, run `git stash` or `git stash push`
+
+
+
+`git stash list`
+
+At this point, you can switch branches and do work elsewhere; your changes are stored on your stack. To see which stashes you’ve stored, you can use `git stash list`:
+
+
+
+`git stash apply`
+
+In this case, two stashes were saved previously, so you have access to three different stashed works.
+You can reapply the one you just stashed by using the command shown in the help output of the original stash command:
+
+
+
+`git stash apply stash@{2}`
+
+If you want to apply one of the older stashes, you can specify it by naming it, like this: `git stash apply stash@{2}`
+
+[git stash explanation](https://git-scm.com/book/en/v2/Git-Tools-Stashing-and-Cleaning)
 
 
 
@@ -141,4 +187,18 @@ git checkout main //checkout the current branch and move to the branch wanted ("
 `git reset <file>` or `git reset` to unstage all changes
 
 [how to undo a git add with Git reset](https://forum.freecodecamp.org/t/how-to-undo-a-git-add-with-git-reset/13237)
+
+/home/minghan/OpenFOAM/minghan-v1812/src/TurbulenceModels/turbulenceModels/MyUQ/MyUQ.C
+
+
+
+### Git to get the files that have changed
+
+`git diff --name-only HEAD (HEAD~3)` note `()` is added to indicate this is optional: in last 3 commits
+
+`git diff --name-status HEAD HEAD~3` add action on each file to know if the file was deleted (D), modified (M), or added (A) 
+
+`git diff --name-only HEAD~10 HEAD~5`Note differences between the tenth latest commit and the fifth latest 
+
+ 
 
